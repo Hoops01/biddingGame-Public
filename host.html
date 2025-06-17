@@ -106,20 +106,24 @@ firebase.auth().signInAnonymously().catch(function(error) {
       const dispatchVolume = +document.getElementById('dispatchVolume').value;
       currentDispatchVolume = dispatchVolume;
 
-	  // Get the player bids from localStorage
-    const player1Bids = JSON.parse(localStorage.getItem('Coal Crush IncBids') || '[]');
-    const player2Bids = JSON.parse(localStorage.getItem('Gas Giant EnergyBids') || '[]');
-    const player3Bids = JSON.parse(localStorage.getItem('Diesel Dynamos LtdBids') || '[]');
-    const player4Bids = JSON.parse(localStorage.getItem('Sunny Solar CorpBids') || '[]');
-    const player5Bids = JSON.parse(localStorage.getItem('Wind Gust PowerBids') || '[]');
-    const player6Bids = JSON.parse(localStorage.getItem('Hydro Flow EnergyBids') || '[]');
+			firebase.database().ref('bids/').once('value').then(snapshot => {
+		  const bidsData = snapshot.val();
+		  currentBids = [];
 
-    // Combine the player bids into a single array
-    currentBids = [...player1Bids, ...player2Bids, ...player3Bids, ...player4Bids, ...player5Bids, ...player6Bids];
-    
-	  const { processedBids, clearingPrice } = runDispatch(dispatchVolume, currentBids);
-      drawChart(processedBids, dispatchVolume, clearingPrice);
-      calculateRevenue(processedBids, clearingPrice);
+		  for (const player in bidsData) {
+		    if (bidsData[player].bids) {
+		      currentBids.push(...bidsData[player].bids);
+		    }
+		  }
+
+		  const dispatchVolume = +document.getElementById('dispatchVolume').value;
+		  currentDispatchVolume = dispatchVolume;
+
+		  const { processedBids, clearingPrice } = runDispatch(dispatchVolume, currentBids);
+		  drawChart(processedBids, dispatchVolume, clearingPrice);
+		  calculateRevenue(processedBids, clearingPrice);
+		});
+
     });
 
     function runDispatch(dispatchVolume, bids) {
