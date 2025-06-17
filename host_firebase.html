@@ -1,0 +1,420 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Host - Bidding Game</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .form-section { margin-bottom: 20px; }
+    .bar { stroke: black; stroke-width: 1px; }
+    .legend { font-size: 14px; }
+    .axis-label { font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #f2f2f2; }
+  </style>
+</head>
+<body>
+  <h2>Host - Australian NEM Bidding Game</h2>
+  <div class="form-section">
+    <h4>Enter Dispatched Volume (MW):</h4>
+    <input type="number" step="any" id="dispatchVolume" required>
+    <button type="button" id="dispatchBtn">Run Dispatch</button>
+    <button id="next-round-btn">Next Round</button>
+    <p id="round-number">Round 1</p>
+    <div id="cumulative-results"></div>
+  </div>
+  <svg id="chart" width="1000" height="500"></svg>
+  <table id="revenueTable">
+    <thead>
+      <tr>
+		<th>Player</th>
+		<th>Volume<br>Dispatched (MW)</th>
+		<th>Revenue ($)</th>
+		<th>Cost ($)</th>
+		<th>Margin ($)</th>
+        <th>Cumulative<br>Margin ($)</th>
+        <th>Cumulative<br>Volume (MW)</th>
+        <th>Cumulative<br>Load-Weighted<br>Price ($/MWh)</th>
+        <th>Average<br>Time-Weighted<br>Price ($/MWh)</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
+<script>
+  // Your web app's Firebase configuration
+	const firebaseConfig = {
+	  apiKey: "AIzaSyDQ9Y6EdZgkBcZnpbcD77M58TSJYCuthoE",
+	  authDomain: "australian-nem-bidding-game.firebaseapp.com",
+	  databaseURL: "https://australian-nem-bidding-game-default-rtdb.asia-southeast1.firebasedatabase.app",
+	  projectId: "australian-nem-bidding-game",
+	  storageBucket: "australian-nem-bidding-game.firebasestorage.app",
+	  messagingSenderId: "103393723332",
+	  appId: "1:103393723332:web:96683248c435e7c52d9a91"
+	};
+  // Initialize Firebase
+  firebase.initializeApp(firebaseConfig);
+  var database = firebase.database();
+</script>
+<script>
+    let currentBids = [];
+    let x; // global x scale
+    let currentDispatchVolume = 0;
+    let clearingPrice = 0;
+    let round = 1;
+    let roundResults = [];
+
+    // Get the player colors from localStorage
+    const storedPlayerColors = localStorage.getItem("playerColors");
+
+    // Parse the stored player colors
+    const playerColors = JSON.parse(storedPlayerColors);
+
+    // Get the player names from the player colors object
+    const playerNames = Object.keys(playerColors);
+	
+    // Initialize the cumulative margins and volumes objects
+    let cumulativeMargins = {};
+    let cumulativeVolumes = {};
+
+    // Loop through the player names
+    playerNames.forEach((playerName) => {
+      cumulativeMargins[playerName] = 0;
+      cumulativeVolumes[playerName] = 0;
+    });
+	
+	
+    const fuelCosts = {
+      "Coal Crush Inc": 55,
+      "Gas Giant Energy": 150,
+      "Diesel Dynamos Ltd": 290,
+      "Sunny Solar Corp": 0,
+      "Wind Gust Power": 0,
+      "Hydro Flow Energy": 35
+    };
+
+
+    document.getElementById('dispatchBtn').addEventListener('click', function () {
+      const dispatchVolume = +document.getElementById('dispatchVolume').value;
+      currentDispatchVolume = dispatchVolume;
+
+	  // Get the player bids from localStorage
+    const player1Bids = JSON.parse(localStorage.getItem('Coal Crush IncBids') || '[]');
+    const player2Bids = JSON.parse(localStorage.getItem('Gas Giant EnergyBids') || '[]');
+    const player3Bids = JSON.parse(localStorage.getItem('Diesel Dynamos LtdBids') || '[]');
+    const player4Bids = JSON.parse(localStorage.getItem('Sunny Solar CorpBids') || '[]');
+    const player5Bids = JSON.parse(localStorage.getItem('Wind Gust PowerBids') || '[]');
+    const player6Bids = JSON.parse(localStorage.getItem('Hydro Flow EnergyBids') || '[]');
+
+    // Combine the player bids into a single array
+    currentBids = [...player1Bids, ...player2Bids, ...player3Bids, ...player4Bids, ...player5Bids, ...player6Bids];
+    
+	  const { processedBids, clearingPrice } = runDispatch(dispatchVolume, currentBids);
+      drawChart(processedBids, dispatchVolume, clearingPrice);
+      calculateRevenue(processedBids, clearingPrice);
+    });
+
+    function runDispatch(dispatchVolume, bids) {
+          const allBids = [...bids];
+          allBids.sort((a, b) => a.price - b.price);
+
+          let processedBids = [];
+          let dispatchedSoFar = 0;
+          let cumulative = 0;
+          let clearingPrice = 0;
+
+          for (let bid of allBids) {
+            const remaining = dispatchVolume - dispatchedSoFar;
+            const dispatchedVol = Math.min(bid.volume, remaining);
+            const nonDispatchedVol = bid.volume - dispatchedVol;
+
+            if (dispatchedVol > 0) {
+              processedBids.push({ ...bid, volume: dispatchedVol, dispatched: true, start: cumulative, end: cumulative + dispatchedVol });
+              cumulative += dispatchedVol;
+              dispatchedSoFar += dispatchedVol;
+              clearingPrice = bid.price;
+            }
+
+            if (nonDispatchedVol > 0) {
+              processedBids.push({ ...bid, volume: nonDispatchedVol, dispatched: false, start: cumulative, end: cumulative + nonDispatchedVol });
+              cumulative += nonDispatchedVol;
+            }
+          }
+
+          return { processedBids, clearingPrice };
+        }
+
+    function drawChart(bids, dispatchVolume, clearingPrice) {
+      const svg = d3.select("#chart");
+      svg.selectAll("*").remove();
+      const width = +svg.attr("width") - 100;
+      const height = +svg.attr("height") - 60;
+      const margin = { top: 20, right: 20, bottom: 40, left: 60 };
+
+      const totalVolume = d3.sum(bids, d => d.volume);
+      const minPrice = d3.min(bids, d => d.price);
+      const maxPrice = d3.max(bids, d => d.price);
+
+      x = d3.scaleLinear().domain([0, 12000]).range([margin.left, width]);
+      const y = d3.scaleLinear().domain([-100, 300]).range([height, margin.top]);
+
+      //const playerColors = { "player1": "steelblue", "player2": "orange", "player3": "seagreen" };
+
+      svg.selectAll(".bar")
+        .data(bids)
+        .enter()
+        .append("rect")
+		.attr("class", "bar")
+        .attr("x", d => x(d.start))
+        .attr("y", d => y(Math.max(0, d.price)))
+        .attr("width", d => x(d.end) - x(d.start))
+        .attr("height", d => Math.abs(y(d.price) - y(0)))
+        .attr("fill", d => playerColors[d.player])
+        .attr("opacity", d => d.dispatched ? 1 : 0.3)
+		.call(d3.drag()
+		  .on("drag", function (event, d) {
+			const newEndX = Math.max(margin.left, Math.min(width, event.x));
+			const newVolume = x.invert(newEndX) - d.start;
+
+			if (newVolume > 0) {
+			  // Update the volume in currentBids
+			  const bidIndex = currentBids.findIndex(b => b.player === d.player && b.price === d.price);
+        if (bidIndex !== -1) {
+				currentBids[bidIndex].volume = newVolume;
+			  }
+
+			  const { processedBids, clearingPrice } = runDispatch(currentDispatchVolume, currentBids);
+			  drawChart(processedBids, currentDispatchVolume, clearingPrice);
+			  calculateRevenue(processedBids, clearingPrice);
+			}
+		  })
+		)
+        .attr("stroke", "black")
+        .attr("stroke-width", 1)
+        .append("title")
+        .text(d => `Player: ${d.player}
+Price: $${d.price.toFixed(2)}
+Volume: ${d.volume} MW
+Dispatched: ${d.dispatched ? d.volume : 0} MW`);
+
+      // Draggable dispatch line
+      const dispatchLine = svg.append("line")
+        .attr("class", "dispatch-line")
+        .attr("x1", x(dispatchVolume))
+        .attr("x2", x(dispatchVolume))
+        .attr("y1", y(minPrice))
+        .attr("y2", y(300))
+        .attr("stroke", "red")
+        .attr("stroke-width", 2)
+        .attr("stroke-dasharray", "4");
+
+      const dragCircle = svg.append("circle")
+        .attr("class", "dispatch-handle")
+        .attr("cx", x(dispatchVolume))
+        .attr("cy", y(clearingPrice))
+        .attr("r", 8)
+        .attr("fill", "red")
+        .attr("stroke", "black")
+        .attr("stroke-width", 1)
+        .style("cursor", "ew-resize")
+        .call(d3.drag()
+          .on("drag", function (event) {
+            const newX = Math.max(margin.left, Math.min(width, event.x));
+            const newVolume = x.invert(newX);
+            currentDispatchVolume = newVolume;
+            document.getElementById('dispatchVolume').value = newVolume.toFixed(2);
+
+            const { processedBids, clearingPrice } = runDispatch(newVolume, currentBids);
+            drawChart(processedBids, newVolume, clearingPrice);
+            calculateRevenue(processedBids, clearingPrice);
+          })
+        );
+
+      // Clearing price line
+      svg.append("line")
+        .attr("x1", x(0))
+        .attr("x2", x(totalVolume))
+        .attr("y1", y(clearingPrice))
+        .attr("y2", y(clearingPrice))
+        .attr("stroke", "green")
+        .attr("stroke-width", 2)
+        .attr("stroke-dasharray", "4");
+
+      svg.append("text")
+        .attr("x", x(totalVolume) - 100)
+        .attr("y", y(clearingPrice) - 5)
+        .attr("fill", "green")
+        .text(`Clearing Price: $${clearingPrice.toFixed(2)}`);
+
+      // Axes
+      const xAxis = d3.axisBottom(x);
+      const yAxis = d3.axisLeft(y);
+      svg.append("g")
+        .attr("transform", `translate(0,${height})`)
+        .call(xAxis)
+        .append("text")
+        .attr("x", width / 2)
+        .attr("y", 35)
+        .attr("fill", "black")
+        .attr("text-anchor", "middle")
+        .text("Cumulative Volume (MW)");
+
+      svg.append("g")
+        .attr("transform", `translate(${margin.left},0)`)
+        .call(yAxis)
+        .append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("x", -height / 2)
+        .attr("y", -45)
+        .attr("fill", "black")
+        .attr("text-anchor", "middle")
+        .text("Price ($/MWh)");
+
+      // Legend
+      const legend = svg.selectAll(".legend")
+        .data(Object.entries(playerColors))
+        .enter()
+        .append("g")
+        .attr("class", "legend")
+        .attr("transform", (d, i) => `translate(${margin.left + i * 150}, ${margin.top})`);
+
+      legend.append("rect")
+
+.call(d3.drag()
+  .on("drag", function (event, d) {
+    const newEndX = event.x;
+    const newVolume = x.invert(newEndX) - d.start;
+
+    if (newVolume > 0) {
+      // Update the volume in currentBids
+      const bidIndex = currentBids.findIndex(b => b.player === d.player && b.price === d.price && b.start === d.start);
+      if (bidIndex !== -1) {
+        currentBids[bidIndex].volume = newVolume;
+      }
+
+      const { processedBids, clearingPrice } = runDispatch(currentDispatchVolume, currentBids);
+      drawChart(processedBids, currentDispatchVolume, clearingPrice);
+      calculateRevenue(processedBids, clearingPrice);
+    }
+  })
+)
+
+        .attr("x", 0)
+        .attr("width", 18)
+        .attr("height", 18)
+        .attr("fill", d => d[1]);
+
+      legend.append("text")
+        .attr("x", 24)
+        .attr("y", 14)
+        .text(d => d[0]);
+    }
+
+    function calculateRevenue(bids, clearingPrice) {
+      const revenueData = {};
+      const players = [...new Set(bids.map(bid => bid.player))]; // Get unique list of players from bids
+
+      // Initialize revenue data for all players
+      players.forEach(player => {
+        revenueData[player] = { volume: 0, revenue: 0, cost: 0 };
+      });
+      bids.forEach(bid => {
+        if (bid.dispatched) {
+		  const fuelCost = fuelCosts[bid.player];
+          revenueData[bid.player].volume += bid.volume;
+          revenueData[bid.player].revenue += bid.volume * clearingPrice / 12;
+          revenueData[bid.player].cost += bid.volume * fuelCost / 12;
+        }
+      });
+
+      // Initialize cumulativeLoadWeightedPrices to 0 for each player
+      players.forEach(player => {
+        cumulativeLoadWeightedPrices[player] = 0;
+      });
+
+      
+
+       // Sort revenue data by cumulative margin descending
+      const sortedRevenueData = Object.entries(revenueData).sort((a, b) => {
+        return cumulativeMargins[b[0]] - cumulativeMargins[a[0]];
+      });
+
+      const tbody = document.querySelector("#revenueTable tbody");
+      tbody.innerHTML = "";
+
+      //sortedRevenueData.forEach(([player, data]) => {
+      Object.entries(revenueData).forEach(([player, data]) => {
+        const margin = data.revenue - data.cost;
+        const cumulativeLoadWeightedPrice = cumulativeVolumes[player] === 0 ? 0 : cumulativeMargins[player] / cumulativeVolumes[player] * 12;
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${player}</td>
+          <td>${data.volume.toFixed(2)}</td>
+          <td>$${data.revenue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+      <td>-$${data.cost.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+      <td>$${margin.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+          <td>$${cumulativeMargins[player].toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+          <td>${cumulativeVolumes[player].toFixed(2)}</td>
+          <td>$${cumulativeLoadWeightedPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    const cumulativeLoadWeightedPrices = {};
+    let totalClearingPrice = 0;
+    let roundCount = 0;
+
+    document.getElementById('next-round-btn').addEventListener('click', function() {
+      const tbody = document.querySelector("#revenueTable tbody");
+      const rows = tbody.rows;
+      const { processedBids, clearingPrice } = runDispatch(currentDispatchVolume, currentBids);
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const player = row.cells[0].textContent;
+        const margin = parseFloat(row.cells[4].textContent.replace(/[$,]/g, ''));
+        
+        cumulativeMargins[player] += margin;
+        cumulativeVolumes[player] += parseFloat(row.cells[1].textContent);
+        cumulativeLoadWeightedPrices[player] = cumulativeMargins[player] / cumulativeVolumes[player]*12;
+      }
+
+      currentBids = [];
+      currentDispatchVolume = 0;
+      round++;
+      document.getElementById('round-number').innerHTML = `Round ${round}`;
+
+      // Update averageClearingPrice
+      totalClearingPrice += clearingPrice;
+      console.log('Clearing Price:', clearingPrice);
+      roundCount++;
+      averageClearingPrice = totalClearingPrice / roundCount;
+      console.log(`Average Clearing Price after ${roundCount} rounds: $${averageClearingPrice.toFixed(2)}`);  
+
+      // Update the cumulative margin column
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const player = row.cells[0].textContent;
+        row.cells[5].textContent = `$${cumulativeMargins[player].toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+        row.cells[6].textContent = `${cumulativeVolumes[player].toFixed(2)}`;
+        row.cells[7].textContent = `$${cumulativeLoadWeightedPrices[player].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+        if (row.cells[8]) {
+            row.cells[8].textContent = `$${averageClearingPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+          } else {
+            const newCell = row.insertCell(8);
+            newCell.textContent = `$${averageClearingPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+          }
+      }
+
+    });
+  </script>
+</body>
+</html>
