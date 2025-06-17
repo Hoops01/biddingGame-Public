@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Player Interface - Bidding Game</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .form-section { margin-bottom: 20px; }
+    .bar { stroke: black; stroke-width: 1px; cursor: pointer; }
+    .dotted-line { stroke: black; stroke-width: 1px; stroke-dasharray: 4; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #f2f2f2; }
+    input { width: 80px; padding: 5px; margin: 5px; }
+  </style>
+</head>
+<body>
+  <h2>Player Interface - Australian NEM Bidding Game</h2>
+  
+  <div class="form-section">
+    <h4>Select Player:</h4>
+    <select id="playerSelect">
+      <option value="Coal Crush Inc">Coal Crush Inc</option>
+      <option value="Gas Giant Energy">Gas Giant Energy</option>
+      <option value="Diesel Dynamos Ltd">Diesel Dynamos Ltd</option>
+      <option value="Sunny Solar Corp">Sunny Solar Corp</option>
+      <option value="Wind Gust Power">Wind Gust Power</option>
+      <option value="Hydro Flow Energy">Hydro Flow Energy</option>
+    </select>
+  </div>
+
+  <div class="form-section">
+    <h4>Enter Bid Volumes (MW):</h4>
+    <label>Bid 1: <input type="number" id="bid1" value="500", step="1"></label>
+    <label>Bid 2: <input type="number" id="bid2" value="500", step="1"></label>
+    <label>Bid 3: <input type="number" id="bid3" value="1000" readonly></label>
+  </div>
+
+  <div class="form-section">
+    <h4>Enter Bid Prices ($/MWh):</h4>
+    <label>Price 1: <input type="number" id="price1" value="30", step="1"></label>
+    <label>Price 2: <input type="number" id="price2" value="50", step="1"></label>
+    <label>Price 3: <input type="number" id="price3" value="70",step=1></label>
+  </div>
+
+  <button type="button" id="submitBidsBtn">Submit Bids</button>
+  
+  <svg id="chart" width="1000" height="500"></svg>
+
+  <script>
+
+var firebaseConfig = {
+	  apiKey: "AIzaSyDQ9Y6EdZgkBcZnpbcD77M58TSJYCuthoE",
+	  authDomain: "australian-nem-bidding-game.firebaseapp.com",
+	  databaseURL: "https://australian-nem-bidding-game-default-rtdb.asia-southeast1.firebasedatabase.app",
+	  projectId: "australian-nem-bidding-game",
+	  storageBucket: "australian-nem-bidding-game.firebasestorage.app",
+	  messagingSenderId: "103393723332",
+	  appId: "1:103393723332:web:96683248c435e7c52d9a91"
+};
+firebase.initializeApp(firebaseConfig);
+firebase.auth().signInAnonymously().catch(function(error) {
+    console.error("Auth error:", error);
+});
+
+
+    const MAX_CAPACITY = 2000;
+const playerColors = {
+  "Coal Crush Inc": "#744a26", // dark brown, representing coal
+  "Gas Giant Energy": "#f48e1b", // deep red, representing natural gas
+  "Diesel Dynamos Ltd": "#e15c34", // dark red, representing fire
+  "Sunny Solar Corp": "#fed500", // bright yellow, representing sunlight
+  "Wind Gust Power": "#2c7629", // lime green, representing wind
+  "Hydro Flow Energy": "#5ea0c0", // steel blue, representing water
+};
+
+	
+	
+    const fuelCosts = {
+      "Coal Crush Inc": 55,
+      "Gas Giant Energy": 150,
+      "Diesel Dynamos Ltd": 290,
+      "Sunny Solar Corp": 0,
+      "Wind Gust Power": 0,
+      "Hydro Flow Energy": 35
+    };
+
+
+    function updateBidVolumes() {
+      const firstBid = Math.round(parseFloat(document.getElementById("bid1").value)) || 0;
+      const secondBid = Math.round(parseFloat(document.getElementById("bid2").value)) || 0;
+      const thirdBid = Math.max(0, MAX_CAPACITY - firstBid - secondBid);
+
+      document.getElementById("bid1").value = firstBid;
+      document.getElementById("bid2").value = secondBid;
+      document.getElementById("bid3").value = thirdBid; // Bid 3 remains integer
+
+      drawChart(document.getElementById("playerSelect").value);
+    }
+
+    
+
+    let playerBids = []; // Global variable to store bids
+	function updateBidPrices() {
+	  const player = document.getElementById("playerSelect").value;
+
+	  const playerBids = [
+	    { id: "bid1", volume: parseFloat(document.getElementById("bid1").value), price: parseFloat(document.getElementById("price1").value) },
+	    { id: "bid2", volume: parseFloat(document.getElementById("bid2").value), price: parseFloat(document.getElementById("price2").value) },
+	    { id: "bid3", volume: parseFloat(document.getElementById("bid3").value), price: parseFloat(document.getElementById("price3").value) }
+	  ];
+
+
+
+	  drawChart(player); // Redraw chart with updated prices
+	}
+
+    document.getElementById("bid1").addEventListener("input", updateBidVolumes);
+    document.getElementById("bid2").addEventListener("input", updateBidVolumes);
+
+    document.getElementById("price1").addEventListener("input", updateBidPrices);
+    document.getElementById("price2").addEventListener("input", updateBidPrices);
+    document.getElementById("price3").addEventListener("input", updateBidPrices);
+
+    function drawChart(player) {
+      const svg = d3.select("#chart");
+      svg.selectAll("*").remove();
+      const margin = { top: 20, right: 20, bottom: 40, left: 60 };
+      const width = 1000 - margin.left - margin.right;
+      const height = 500 - margin.top - margin.bottom;
+
+      const x = d3.scaleLinear().domain([0, MAX_CAPACITY]).range([margin.left, width]);
+      const y = d3.scaleLinear().domain([-100, 300]).range([height, margin.top]);
+
+      const playerBids = [
+        { id: "bid1", volume: parseFloat(document.getElementById("bid1").value), price: parseFloat(document.getElementById("price1").value) },
+        { id: "bid2", volume: parseFloat(document.getElementById("bid2").value), price: parseFloat(document.getElementById("price2").value) },
+        { id: "bid3", volume: parseFloat(document.getElementById("bid3").value), price: parseFloat(document.getElementById("price3").value) }
+      ];
+
+      let cumulativeVolume = 0;
+
+      playerBids.forEach(bid => {
+        bid.startVolume = cumulativeVolume;
+        cumulativeVolume += bid.volume;
+      });
+
+      svg.selectAll(".bar")
+        .data(playerBids)
+        .enter()
+        .append("rect")
+        .attr("class", "bar")
+        .attr("x", d => x(d.startVolume))
+        .attr("y", d => Math.min(y(0), y(d.price))) // Ensures bars extend downward for negative prices
+        .attr("width", d => x(d.volume) - margin.left)
+        .attr("height", d => Math.abs(y(d.price) - y(0))) // Calculates height relative to 0
+        .attr("fill", playerColors[player])
+        .attr("opacity", 0.7)
+        .call(d3.drag()
+          .on("drag", function(event, d, i) {
+            
+            const newX = Math.max(margin.left, Math.min(width, event.x));
+            const newY = Math.max(margin.top, Math.min(height, event.y));
+            d.volume = x.invert(newX) - d.startVolume;
+            d.price = Math.round(y.invert(newY) * 100) / 100;
+
+
+
+            document.getElementById(d.id).value = Math.max(0, d.volume);
+			document.getElementById(`price${d.id.charAt(3)}`).value = d.price.toFixed(2);
+            
+            // If dragged lower than previous bid's price, inherit the new value
+            if (i > 0 && d.price < playerBids[i - 1].price) {
+                playerBids[i - 1].price = d.price;
+                document.getElementById(`price${playerBids[i - 1].id.charAt(3)}`).value = d.price.toFixed(2);
+            }
+
+            
+            updateBidVolumes();
+          })
+        )
+        .append("title")
+        .text(d => `Volume: ${d.volume.toFixed(2)} MW\nPrice: $${d.price.toFixed(2)}`);
+    
+        <!--
+      svg.selectAll(".dotted-line")
+        .data(playerBids)
+        .enter()
+        .append("line")
+        .attr("class", "dotted-line")
+        .attr("x1", margin.left)
+        .attr("x2", d => x(d.startVolume + d.volume))
+        .attr("y1", d => y(d.price))
+        .attr("y2", d => y(d.price));
+
+        // Add bid price labels above bid bars
+        svg.selectAll(".price-label")
+        .data(playerBids)
+        .enter()
+        .append("text")
+        .attr("class", "price-label")
+        .attr("x", d => x(d.startVolume + d.volume / 2)) // Centered above the bar
+        .attr("y", d => y(d.price) - (d.price < 0 ? -15 : 10)) // Adjust text position for negative bids
+        .attr("text-anchor", "middle") // Center-align text
+        .attr("font-size", "12px")
+        .attr("fill", "black")
+        .text(d => `$${d.price.toFixed(2)}`);
+
+        // Add bid volume labels inside bars
+        svg.selectAll(".volume-label")
+        .data(playerBids)
+        .enter()
+        .append("text")
+        .attr("class", "volume-label")
+        .attr("x", d => x(d.startVolume + d.volume / 2)) // Center text horizontally
+        .attr("y", d => y(d.price) + 20) // Position slightly inside the bar
+        .attr("y", d => d.price < 0 ? y(d.price) - 10 : y(d.price) + 20) // Position above bar if price < 0
+        .attr("y", d => d.price >= 0 ? y(0) - 10 : y(0) + 20) // Adjust based on price
+        .attr("text-anchor", "middle")
+        .attr("font-size", "12px")
+        .attr("fill", "white") // Ensures readability inside colored bars
+        .text(d => `${d.volume.toFixed(0)} MW`);
+
+        // Add double-ended horizontal arrows
+        svg.selectAll(".arrow")
+        .data(playerBids)
+        .enter()
+        .append("line")
+        .attr("class", "arrow")
+        .attr("x1", d => x(d.startVolume))
+        .attr("x2", d => x(d.startVolume + d.volume))
+        .attr("y1", d => y(d.price) + 10) // Position inside the bar
+        .attr("y2", d => y(d.price) + 10)
+        .attr("y1", y(0)) // Positions arrows at y=0
+        .attr("y2", y(0))
+        .attr("stroke", "black")
+        .attr("stroke-width", 2)
+        .attr("marker-start", "url(#arrowhead-start)") // Left arrow at start
+        .attr("marker-end", "url(#arrowhead-end)");    // Right arrow at end
+
+        // Define arrowheads for styling
+        svg.append("defs").append("marker")
+        .attr("id", "arrowhead-start")
+        .attr("viewBox", "0 0 10 10")
+        .attr("refX", 0)
+        .attr("refY", 5)
+        .attr("markerWidth", 6)
+        .attr("markerHeight", 6)
+        .attr("orient", "auto")
+        .append("path")
+        .attr("d", "M 10 0 L 0 5 L 10 10 Z") // Left-pointing arrow
+        .attr("fill", "black");
+
+        svg.append("defs").append("marker")
+          .attr("id", "arrowhead-end")
+          .attr("viewBox", "0 0 10 10")
+          .attr("refX", 10)
+          .attr("refY", 5)
+          .attr("markerWidth", 6)
+          .attr("markerHeight", 6)
+          .attr("orient", "auto")
+          .append("path")
+          .attr("d", "M 0 0 L 10 5 L 0 10 Z") // Right-pointing arrow
+          .attr("fill", "black");
+        -->
+      const xAxis = d3.axisBottom(x);
+      const yAxis = d3.axisLeft(y);
+
+      svg.append("g")
+        .attr("transform", `translate(0,${height})`)
+        .call(xAxis)
+        .append("text")
+        .attr("x", width / 2)
+        .attr("y", 35)
+        .attr("fill", "black")
+        .attr("text-anchor", "middle")
+        .text("Cumulative Volume (MW)");
+
+      svg.append("g")
+        .attr("transform", `translate(${margin.left},0)`)
+        .call(yAxis)
+        .append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("x", -height / 2)
+        .attr("y", -45)
+        .attr("fill", "black")
+        .attr("text-anchor", "middle")
+        .text("Price ($/MWh)");
+		
+		
+		const fuelCost = fuelCosts[player]; // or parseFloat(document.getElementById("fuelCost").value);
+
+		// Draw horizontal fuel cost line
+		svg.append("line")
+		  .attr("x1", margin.left)
+		  .attr("x2", width)
+		  .attr("y1", y(fuelCost))
+		  .attr("y2", y(fuelCost))
+		  .attr("stroke", "red")
+		  .attr("stroke-width", 2)
+		  .attr("stroke-dasharray", "4");
+
+		// Add label
+		svg.append("text")
+		  .attr("x", width - 100)
+		  .attr("y", y(fuelCost) - 5)
+		  .attr("fill", "red")
+		  .attr("font-size", "12px")
+		  .text(`Fuel Cost: $${fuelCost.toFixed(2)}`);
+
+    }
+
+    document.getElementById('playerSelect').addEventListener('change', function() {
+      drawChart(this.value);
+    });
+
+    document.getElementById('submitBidsBtn').addEventListener('click', function() {
+      const player = document.getElementById('playerSelect').value;
+
+      const bids = [
+        { player: player, volume: parseFloat(document.getElementById("bid1").value), price: parseFloat(document.getElementById("price1").value) },
+        { player: player, volume: parseFloat(document.getElementById("bid2").value), price: parseFloat(document.getElementById("price2").value) },
+        { player: player, volume: parseFloat(document.getElementById("bid3").value), price: parseFloat(document.getElementById("price3").value) }
+      ];
+
+      
+firebase.database().ref('bids/' + player).set({
+    bids: bids,
+    fuelCost: fuelCost
+});
+
+	    localStorage.setItem(`${player}FuelCost`, fuelCosts[player]); // Save fuel cost
+      localStorage.setItem("playerColors", JSON.stringify(playerColors));
+      localStorage.setItem('player1Submitted', 'true');
+      // Dispatch a custom event to notify other pages
+      window.dispatchEvent(new Event('storage'));
+
+      alert(`${player} bids submitted!`);
+    });
+
+
+    drawChart('player1');
+  </script>
+</body>
+</html>
