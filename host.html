@@ -27,6 +27,7 @@
     <input type="number" step="any" id="dispatchVolume" required>
     <button type="button" id="dispatchBtn">Run Dispatch</button>
     <button id="next-round-btn">Next Round</button>
+	<button id="resetBtn">Reset Game</button>
     <p id="round-number">Round 1</p>
     <div id="cumulative-results"></div>
   </div>
@@ -62,6 +63,21 @@ var firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 firebase.auth().signInAnonymously().catch(function(error) {
     console.error("Auth error:", error);
+});
+
+	  
+document.getElementById('resetBtn').addEventListener('click', function () {
+  if (confirm("Are you sure you want to reset all bids? This cannot be undone.")) {
+    firebase.database().ref('bids/').remove()
+      .then(() => {
+        alert("All bids have been cleared.");
+        location.reload(); // Optional: reload the page to reset the UI
+      })
+      .catch((error) => {
+        console.error("Error clearing bids:", error);
+        alert("Failed to reset bids.");
+      });
+  }
 });
 
 
