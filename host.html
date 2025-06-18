@@ -85,6 +85,7 @@ document.getElementById('resetBtn').addEventListener('click', function () {
     let x; // global x scale
     let currentDispatchVolume = 0;
     let clearingPrice = 0;
+    let averageClearingPrice = 0;
     let round = 1;
     let roundResults = [];
 
@@ -388,7 +389,7 @@ Dispatched: ${d.dispatched ? d.volume : 0} MW`);
           <td>$${cumulativeMargins[player].toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
           <td>${cumulativeVolumes[player].toFixed(2)}</td>
           <td>$${cumulativeLoadWeightedPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-
+	  <td>$${averageClearingPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         `;
         tbody.appendChild(row);
       });
@@ -415,8 +416,8 @@ Dispatched: ${d.dispatched ? d.volume : 0} MW`);
         cumulativeLoadWeightedPrices[player] = cumulativeRevenue[player] / cumulativeVolumes[player]*1; //FIXME: just do it for the hour
       }
 
-      currentBids = [];
-      currentDispatchVolume = 0;
+      //currentBids = [];
+      //currentDispatchVolume = 0;
       round++;
       document.getElementById('round-number').innerHTML = `Round ${round}`;
 
