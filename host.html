@@ -375,6 +375,8 @@ Dispatched: ${d.dispatched ? d.volume : 0} MW`);
         const margin = data.revenue - data.cost;
         const cumulativeLoadWeightedPrice = cumulativeVolumes[player] === 0 ? 0 : cumulativeMargins[player] / cumulativeVolumes[player] * 1; //FIXME: Just do it for the hour
         const row = document.createElement("tr");
+	row.style.backgroundColor = playerColors[player] || "#ffffff"; // fallback to white
+
         row.innerHTML = `
           <td>${player}</td>
           <td>${data.volume.toFixed(2)}</td>
