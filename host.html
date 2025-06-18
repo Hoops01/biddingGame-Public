@@ -393,6 +393,7 @@ Dispatched: ${d.dispatched ? d.volume : 0} MW`);
     }
 
     const cumulativeLoadWeightedPrices = {};
+    const cumulativeRevenue = {}
     let totalClearingPrice = 0;
     let roundCount = 0;
 
@@ -404,11 +405,13 @@ Dispatched: ${d.dispatched ? d.volume : 0} MW`);
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         const player = row.cells[0].textContent;
-        const margin = parseFloat(row.cells[2].textContent.replace(/[$,]/g, '')); //FIXME: changed it from margin col 4 to rev col 2
+        const margin = parseFloat(row.cells[4].textContent.replace(/[$,]/g, ''));
+	const revenue = parseFloat(row.cells[2].textContent.replace(/[$,]/g, '')); //FIXME: changed it from margin col 4 to rev col 2
         
         cumulativeMargins[player] += margin;
+	cumulativeRevenue[player] += revenue;
         cumulativeVolumes[player] += parseFloat(row.cells[1].textContent);
-        cumulativeLoadWeightedPrices[player] = cumulativeMargins[player] / cumulativeVolumes[player]*1; //FIXME: just do it for the hour
+        cumulativeLoadWeightedPrices[player] = cumulativeRevenue[player] / cumulativeVolumes[player]*1; //FIXME: just do it for the hour
       }
 
       currentBids = [];
