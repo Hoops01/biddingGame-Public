@@ -100,11 +100,13 @@ document.getElementById('resetBtn').addEventListener('click', function () {
     // Initialize the cumulative margins and volumes objects
     let cumulativeMargins = {};
     let cumulativeVolumes = {};
+    let cumulativeRevenue = {}
 
     // Loop through the player names
     playerNames.forEach((playerName) => {
       cumulativeMargins[playerName] = 0;
       cumulativeVolumes[playerName] = 0;
+      cumulativeRevenue[playerName] = 0;
     });
 	
 	
@@ -393,7 +395,6 @@ Dispatched: ${d.dispatched ? d.volume : 0} MW`);
     }
 
     const cumulativeLoadWeightedPrices = {};
-    const cumulativeRevenue = {}
     let totalClearingPrice = 0;
     let roundCount = 0;
 
