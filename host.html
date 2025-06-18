@@ -42,7 +42,7 @@
 		<th>Margin ($)</th>
         <th>Cumulative<br>Margin ($)</th>
         <th>Cumulative<br>Volume (MW)</th>
-        <th>Cumulative<br>Load-Weighted<br>Price ($/MWh)</th>
+        <th>Cumulative<br>Dispatched-Weighted<br>Price ($/MWh)</th>
         <th>Average<br>Time-Weighted<br>Price ($/MWh)</th>
       </tr>
     </thead>
@@ -272,7 +272,7 @@ Dispatched: ${d.dispatched ? d.volume : 0} MW`);
         .attr("x", x(totalVolume) - 100)
         .attr("y", y(clearingPrice) - 5)
         .attr("fill", "green")
-        .text(`Clearing Price: $${clearingPrice.toFixed(2)}`);
+        .text(`Spot Price: $${clearingPrice.toFixed(2)}`);
 
       // Axes
       const xAxis = d3.axisBottom(x);
@@ -350,8 +350,8 @@ Dispatched: ${d.dispatched ? d.volume : 0} MW`);
         if (bid.dispatched) {
 		  const fuelCost = fuelCosts[bid.player];
           revenueData[bid.player].volume += bid.volume;
-          revenueData[bid.player].revenue += bid.volume * clearingPrice / 12;
-          revenueData[bid.player].cost += bid.volume * fuelCost / 12;
+          revenueData[bid.player].revenue += bid.volume * clearingPrice / 1; //FIXME: Just do it for the hour
+          revenueData[bid.player].cost += bid.volume * fuelCost / 1; //FIXME: Just do it for the hour
         }
       });
 
@@ -373,7 +373,7 @@ Dispatched: ${d.dispatched ? d.volume : 0} MW`);
       //sortedRevenueData.forEach(([player, data]) => {
       Object.entries(revenueData).forEach(([player, data]) => {
         const margin = data.revenue - data.cost;
-        const cumulativeLoadWeightedPrice = cumulativeVolumes[player] === 0 ? 0 : cumulativeMargins[player] / cumulativeVolumes[player] * 12;
+        const cumulativeLoadWeightedPrice = cumulativeVolumes[player] === 0 ? 0 : cumulativeMargins[player] / cumulativeVolumes[player] * 1; //FIXME: Just do it for the hour
         const row = document.createElement("tr");
         row.innerHTML = `
           <td>${player}</td>
@@ -402,11 +402,11 @@ Dispatched: ${d.dispatched ? d.volume : 0} MW`);
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         const player = row.cells[0].textContent;
-        const margin = parseFloat(row.cells[4].textContent.replace(/[$,]/g, ''));
+        const margin = parseFloat(row.cells[2].textContent.replace(/[$,]/g, '')); //FIXME: changed it from margin col 4 to rev col 2
         
         cumulativeMargins[player] += margin;
         cumulativeVolumes[player] += parseFloat(row.cells[1].textContent);
-        cumulativeLoadWeightedPrices[player] = cumulativeMargins[player] / cumulativeVolumes[player]*12;
+        cumulativeLoadWeightedPrices[player] = cumulativeMargins[player] / cumulativeVolumes[player]*1; //FIXME: just do it for the hour
       }
 
       currentBids = [];
